@@ -25,6 +25,29 @@ void setPtsMat(KeyPoint obj, KeyPoint target, double *p1, double *p2){
 	p2[8] = -target.pt.y ;
 }
 
+void keypoints2points(vector<KeyPoint> &kps, vector<Point2d> &pts){
+	for(int i=0; i<kps.size(); i++)
+		pts.push_back(kps[i].pt) ;
+}
+
+int inliers(vector<Point2d> &pts_obj, vector<Point2d> &pts_target, vector<vector<DMatch>> &matches, Mat &transform_mat, double threshold){
+	vector<Point2d> transform_obj ;
+	transform_obj.reserve(pts_obj.size()) ;
+	perspectiveTransform(pts_obj, transform_obj, transform_mat) ;
+	int inliers = 0 ;
+	for(int i=0; i<transform_obj.size(); i++){
+		for(int k=0; k<matches[i].size(); k++){
+			Point2d dif = transform_obj[i] - pts_target[matches[i][k].queryIdx] ;
+			double d = dif.x*dif.x + dif.y*dif.y ;
+			if(d < threshold){
+				inliers += 1 ;
+				break ;
+			}
+		}
+	}
+	return inliers ;
+}
+
 int main(){
 	IplImage *img = cvLoadImage("object/a1.jpg") ;
 	IplImage *target = cvLoadImage("target/target1.jpg") ;
@@ -34,8 +57,12 @@ int main(){
 	//initModule_nonfree() ;
 	SiftFeatureDetector detector(0.05, 5.0) ;
 	vector<KeyPoint> kps_obj, kps_target ;
+	vector<Point2d> pts_obj, pts_target ;
 	detector.detect(kimg_obj, kps_obj) ;
 	detector.detect(kimg_target, kps_target) ;
+	//cout << kps_obj.size() << " " << kps_target.size() << endl ;
+	keypoints2points(kps_obj, pts_obj) ;
+	//keypoints2points(kps_target, pts_target) ;
 	
 	drawKeypoints(img, kps_obj, kimg_obj, Scalar(255, 255, 255), DrawMatchesFlags::DRAW_RICH_KEYPOINTS) ;
 	drawKeypoints(target, kps_target, kimg_target, Scalar(255, 255, 255), DrawMatchesFlags::DRAW_RICH_KEYPOINTS) ;
@@ -71,19 +98,22 @@ int main(){
 		Mat pts_mat = Mat::zeros(8, 9, CV_64F) ;
 		double *p ;
 		for(int i=0; i<num_knn; i++){
-			setPtsMat(kps_obj[rndpts[0]], kps_target[i], pts_mat.ptr<double>(0), pts_mat.ptr<double>(1)) ;
+			setPtsMat(kps_obj[rndpts[0]], kps_target[matches[rndpts[0]][i].queryIdx], pts_mat.ptr<double>(0), pts_mat.ptr<double>(1)) ;
 			for(int j=0; j<num_knn; j++){
-				setPtsMat(kps_obj[rndpts[1]], kps_target[j], pts_mat.ptr<double>(2), pts_mat.ptr<double>(3)) ;
+				setPtsMat(kps_obj[rndpts[1]], kps_target[matches[rndpts[1]][j].queryIdx], pts_mat.ptr<double>(2), pts_mat.ptr<double>(3)) ;
 				for(int k=0; k<num_knn; k++){
-					setPtsMat(kps_obj[rndpts[2]], kps_target[k], pts_mat.ptr<double>(4), pts_mat.ptr<double>(5)) ;
+					setPtsMat(kps_obj[rndpts[2]], kps_target[matches[rndpts[2]][k].queryIdx], pts_mat.ptr<double>(4), pts_mat.ptr<double>(5)) ;
 					for(int m=0; m<num_knn; m++){
-						setPtsMat(kps_obj[rndpts[3]], kps_target[m], pts_mat.ptr<double>(6), pts_mat.ptr<double>(7)) ;
+						setPtsMat(kps_obj[rndpts[3]], kps_target[matches[rndpts[3]][m].queryIdx], pts_mat.ptr<double>(6), pts_mat.ptr<double>(7)) ;
 						Mat utu = pts_mat.t() * pts_mat ;
 						Mat eval(1, 9, CV_64F) ;
 						Mat evec(9, 9, CV_64F) ;
 						eigen(utu, eval, evec) ;
-						cout << norm(pts_mat*evec.row(0).t()) << endl ;
-						cout << norm(pts_mat*evec.row(8).t()) << endl ;
+						//cout << norm(pts_mat*evec.row(0).t()) << endl ;
+						//cout << norm(pts_mat*evec.row(8).t()) << endl ;
+						Mat transform_mat(3, 3, CV_64F, evec.ptr<double>(8)) ;
+						inliers(pts_obj, pts_target, matches, transform_mat, 5.0) ;
+						cout << pts_obj.size() << " / " << inliers << endl ;
 					}
 				}
 			}
